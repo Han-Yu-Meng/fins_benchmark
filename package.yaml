@@ -1,0 +1,8 @@
+name: "fins_benchmark"
+version: "0.2.0"
+description: "Benchmark for FINS"
+maintainers:
+  - name: "Your Name"
+    email: "your.email@example.com"
+licenses:
+  - "MIT"
