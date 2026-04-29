@@ -11,12 +11,10 @@ struct BenchmarkData {
 
   BenchmarkData() = default;
   
-  // 重载拷贝构造函数
   BenchmarkData(const BenchmarkData& other) : data(other.data) {
     std::cout << "[WARNING] BenchmarkData 发生了拷贝构造！数据大小: " << data.size() << " bytes" << std::endl;
   }
 
-  // 重载拷贝赋值运算符
   BenchmarkData& operator=(const BenchmarkData& other) {
     if (this != &other) {
       data = other.data;
@@ -25,7 +23,6 @@ struct BenchmarkData {
     return *this;
   }
 
-  // 显式允许移动以确保框架能利用移动语义
   BenchmarkData(BenchmarkData&&) = default;
   BenchmarkData& operator=(BenchmarkData&&) = default;
 };
@@ -118,7 +115,6 @@ private:
 };
 
 EXPORT_NODE(BenchmarkSource)
-
 class BenchmarkPrinter : public fins::Node {
 public:
   BenchmarkPrinter() = default;
@@ -132,8 +128,7 @@ public:
   }
 
   void initialize() override {
-    count_ = 0;
-    total_latency_ = 0;
+    reset_statistics();
     last_report_time_ = std::chrono::steady_clock::now();
     logger->info("Printer 初始化.");
   }
@@ -142,30 +137,53 @@ public:
 
   void pause() override { logger->info("Printer 进入暂停状态."); }
 
-  void reset() override { logger->info("Printer 重置."); }
+  void reset() override { 
+    reset_statistics();
+    logger->info("Printer 重置."); 
+  }
 
   void receive_msg(const fins::Msg<BenchmarkData> &msg) {
     uint64_t latency = fins::latency_us(msg.acq_time);
+    
     total_latency_ += latency;
     count_++;
+
+    if (latency > max_latency_) {
+      max_latency_ = latency;
+    }
+    if (latency < min_latency_) {
+      min_latency_ = latency;
+    }
 
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_report_time_).count();
 
     if (elapsed >= 1) {
       if (count_ > 0) {
-        logger->info("统计结果: 消息大小 {} bytes, 频率 {} Hz, 平均时延 {} us",
-                     msg->data.size(), count_ / elapsed, (total_latency_ / static_cast<double>(count_)));
+        double avg_latency = total_latency_ / static_cast<double>(count_);
+        logger->info("统计结果 ({}s): 消息大小 {} bytes, 频率 {} Hz",
+                     elapsed, msg->data.size(), count_ / elapsed);
+        logger->info("时延统计: 平均 {} us, 最小 {} us, 最大 {} us",
+                     avg_latency, min_latency_, max_latency_);
       }
-      count_ = 0;
-      total_latency_ = 0;
+      
+      reset_statistics();
       last_report_time_ = now;
     }
   }
 
 private:
+  void reset_statistics() {
+    count_ = 0;
+    total_latency_ = 0;
+    max_latency_ = 0;
+    min_latency_ = std::numeric_limits<uint64_t>::max();
+  }
+
   size_t count_ = 0;
   uint64_t total_latency_ = 0;
+  uint64_t max_latency_ = 0;
+  uint64_t min_latency_ = std::numeric_limits<uint64_t>::max();
   std::chrono::steady_clock::time_point last_report_time_;
 };
 
